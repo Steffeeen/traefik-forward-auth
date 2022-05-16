@@ -220,6 +220,10 @@ func (c *Config) parseUnknownFlag(option string, arg flags.SplitArgument, args [
 			list := CommaSeparatedList{}
 			list.UnmarshalFlag(val)
 			rule.Domains = list
+		case "allowedRoles":
+			list := CommaSeparatedList{}
+			list.UnmarshalFlag(val)
+			rule.AllowedRoles = list
 		default:
 			return args, fmt.Errorf("invalid route param: %v", option)
 		}
