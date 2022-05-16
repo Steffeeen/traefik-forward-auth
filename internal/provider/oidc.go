@@ -81,18 +81,18 @@ func (o *OIDC) ExchangeCode(redirectURI, code string) (string, error) {
 }
 
 // GetUser uses the given token and returns a complete provider.User object
-func (o *OIDC) GetUser(token string) (User, error) {
-	var user User
-
+func (o *OIDC) GetUser(token string) (*User, error) {
 	// Parse & Verify ID Token
 	idToken, err := o.verifier.Verify(o.ctx, token)
 	if err != nil {
-		return user, err
+		return nil, err
 	}
 
+	var user = newUser()
+
 	// Extract custom claims
-	if err := idToken.Claims(&user); err != nil {
-		return user, err
+	if err := idToken.Claims(user); err != nil {
+		return nil, err
 	}
 
 	return user, nil

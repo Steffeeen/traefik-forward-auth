@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,52 +18,93 @@ import (
 
 // Request Validation
 
+var users = make(map[uuid.UUID]*UserEntry)
+
+type UserEntry struct {
+	User    *provider.User
+	AddedAt time.Time
+}
+
+var started = false
+
+func cleanUsers() {
+	for userUUID, user := range users {
+		if time.Since(user.AddedAt).Hours() > 1 {
+			delete(users, userUUID)
+		}
+	}
+	time.Sleep(5 * time.Minute)
+}
+
+func ensureUser(user *provider.User) {
+	if !started {
+		go cleanUsers()
+		started = true
+	}
+
+	if _, ok := users[user.UUID]; !ok {
+		users[user.UUID] = &UserEntry{
+			User:    user,
+			AddedAt: time.Now(),
+		}
+	}
+}
+
 // ValidateCookie verifies that a cookie matches the expected format of:
-// Cookie = hash(secret, cookie domain, email, expires)|expires|email
-func ValidateCookie(r *http.Request, c *http.Cookie) (string, error) {
+// Cookie = hash(secret, cookie domain, userUUID, expires)|expires|userUUID
+func ValidateCookie(r *http.Request, c *http.Cookie) (*provider.User, error) {
 	parts := strings.Split(c.Value, "|")
 
 	if len(parts) != 3 {
-		return "", errors.New("Invalid cookie format")
+		return nil, errors.New("Invalid cookie format")
 	}
 
 	mac, err := base64.URLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return "", errors.New("Unable to decode cookie mac")
+		return nil, errors.New("Unable to decode cookie mac")
 	}
 
-	expectedSignature := cookieSignature(r, parts[2], parts[1])
+	var userUUID uuid.UUID
+
+	err = userUUID.UnmarshalText([]byte(parts[2]))
+	if err != nil {
+		return nil, err
+	}
+	user := users[userUUID].User
+
+	expectedSignature, _ := cookieSignature(r, user, parts[1])
 	expected, err := base64.URLEncoding.DecodeString(expectedSignature)
 	if err != nil {
-		return "", errors.New("Unable to generate mac")
+		return nil, errors.New("Unable to generate mac")
 	}
 
 	// Valid token?
 	if !hmac.Equal(mac, expected) {
-		return "", errors.New("Invalid cookie mac")
+		return nil, errors.New("Invalid cookie mac")
 	}
 
 	expires, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return "", errors.New("Unable to parse cookie expiry")
+		return nil, errors.New("Unable to parse cookie expiry")
 	}
 
 	// Has it expired?
 	if time.Unix(expires, 0).Before(time.Now()) {
-		return "", errors.New("Cookie has expired")
+		return nil, errors.New("Cookie has expired")
 	}
 
 	// Looks valid
-	return parts[2], nil
+	return user, nil
 }
 
-// ValidateEmail checks if the given email address matches either a whitelisted
+// ValidateUser checks if the given email address matches either a whitelisted
 // email address, as defined by the "whitelist" config parameter. Or is part of
 // a permitted domain, as defined by the "domains" config parameter
-func ValidateEmail(email, ruleName string) bool {
+func ValidateUser(user *provider.User, ruleName string) bool {
 	// Use global config by default
 	whitelist := config.Whitelist
 	domains := config.Domains
+	allowedRoles := config.AllowedRoles
 
 	if rule, ok := config.Rules[ruleName]; ok {
 		// Override with rule config if found
@@ -70,16 +112,20 @@ func ValidateEmail(email, ruleName string) bool {
 			whitelist = rule.Whitelist
 			domains = rule.Domains
 		}
+
+		if len(rule.AllowedRoles) > 0 {
+			allowedRoles = rule.AllowedRoles
+		}
 	}
 
 	// Do we have any validation to perform?
-	if len(whitelist) == 0 && len(domains) == 0 {
+	if len(whitelist) == 0 && len(domains) == 0 && len(allowedRoles) == 0 {
 		return true
 	}
 
 	// Email whitelist validation
 	if len(whitelist) > 0 {
-		if ValidateWhitelist(email, whitelist) {
+		if ValidateWhitelist(user.Email, whitelist) {
 			return true
 		}
 
@@ -90,10 +136,26 @@ func ValidateEmail(email, ruleName string) bool {
 	}
 
 	// Domain validation
-	if len(domains) > 0 && ValidateDomains(email, domains) {
+	if len(domains) > 0 && ValidateDomains(user.Email, domains) {
 		return true
 	}
 
+	// allowed rules validation
+	if len(allowedRoles) > 0 && ValidateRoles(user, allowedRoles) {
+		return true
+	}
+
+	return false
+}
+
+func ValidateRoles(user *provider.User, allowedRoles CommaSeparatedList) bool {
+	for _, allowedRole := range allowedRoles {
+		for _, userRole := range user.RealmAccess.Roles {
+			if allowedRole == userRole {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -162,10 +224,13 @@ func useAuthDomain(r *http.Request) (bool, string) {
 // Cookie methods
 
 // MakeCookie creates an auth cookie
-func MakeCookie(r *http.Request, email string) *http.Cookie {
+func MakeCookie(r *http.Request, user *provider.User) (*http.Cookie, error) {
 	expires := cookieExpiry()
-	mac := cookieSignature(r, email, fmt.Sprintf("%d", expires.Unix()))
-	value := fmt.Sprintf("%s|%d|%s", mac, expires.Unix(), email)
+	mac, err := cookieSignature(r, user, fmt.Sprintf("%d", expires.Unix()))
+	if err != nil {
+		return nil, err
+	}
+	value := fmt.Sprintf("%s|%d|%s", mac, expires.Unix(), user.UUID)
 
 	return &http.Cookie{
 		Name:     config.CookieName,
@@ -175,7 +240,7 @@ func MakeCookie(r *http.Request, email string) *http.Cookie {
 		HttpOnly: true,
 		Secure:   !config.InsecureCookie,
 		Expires:  expires,
-	}
+	}, nil
 }
 
 // ClearCookie clears the auth cookie
@@ -313,12 +378,16 @@ func matchCookieDomains(domain string) (bool, string) {
 }
 
 // Create cookie hmac
-func cookieSignature(r *http.Request, email, expires string) string {
+func cookieSignature(r *http.Request, user *provider.User, expires string) (string, error) {
 	hash := hmac.New(sha256.New, config.Secret)
 	hash.Write([]byte(cookieDomain(r)))
-	hash.Write([]byte(email))
+	uuidBytes, err := user.UUID.MarshalBinary()
+	if err != nil {
+		return "", errors.New("unable to convert UUID to bytes")
+	}
+	hash.Write(uuidBytes)
 	hash.Write([]byte(expires))
-	return base64.URLEncoding.EncodeToString(hash.Sum(nil))
+	return base64.URLEncoding.EncodeToString(hash.Sum(nil)), nil
 }
 
 // Get cookie expiry

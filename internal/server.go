@@ -92,7 +92,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		}
 
 		// Validate cookie
-		email, err := ValidateCookie(r, c)
+		user, err := ValidateCookie(r, c)
 		if err != nil {
 			if err.Error() == "Cookie has expired" {
 				logger.Info("Cookie has expired")
@@ -105,96 +105,99 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 		}
 
 		// Validate user
-		valid := ValidateEmail(email, rule)
+		valid := ValidateUser(user, rule)
 		if !valid {
-			logger.WithField("email", email).Warn("Invalid email")
+			logger.WithField("user", user).Warn("Invalid user")
 			http.Error(w, "Not authorized", 401)
 			return
 		}
 
 		// Valid request
 		logger.Debug("Allowing valid request")
-		w.Header().Set("X-Forwarded-User", email)
+		w.Header().Set("X-Forwarded-User", user.Email)
 		w.WriteHeader(200)
 	}
 }
 
 // AuthCallbackHandler Handles auth callback request
 func (s *Server) AuthCallbackHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(writer http.ResponseWriter, req *http.Request) {
 		// Logging setup
-		logger := s.logger(r, "AuthCallback", "default", "Handling callback")
+		logger := s.logger(req, "AuthCallback", "default", "Handling callback")
 
 		// Check state
-		state := r.URL.Query().Get("state")
+		state := req.URL.Query().Get("state")
 		if err := ValidateState(state); err != nil {
 			logger.WithFields(logrus.Fields{
 				"error": err,
 			}).Warn("Error validating state")
-			http.Error(w, "Not authorized", 401)
+			http.Error(writer, "Not authorized", 401)
 			return
 		}
 
 		// Check for CSRF cookie
-		c, err := FindCSRFCookie(r, state)
+		cookie, err := FindCSRFCookie(req, state)
 		if err != nil {
 			logger.Info("Missing csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(writer, "Not authorized", 401)
 			return
 		}
 
 		// Validate CSRF cookie against state
-		valid, providerName, redirect, err := ValidateCSRFCookie(c, state)
+		valid, providerName, redirect, err := ValidateCSRFCookie(cookie, state)
 		if !valid {
 			logger.WithFields(logrus.Fields{
 				"error":       err,
-				"csrf_cookie": c,
+				"csrf_cookie": cookie,
 			}).Warn("Error validating csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(writer, "Not authorized", 401)
 			return
 		}
 
 		// Get provider
-		p, err := config.GetConfiguredProvider(providerName)
+		configuredProvider, err := config.GetConfiguredProvider(providerName)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"error":       err,
-				"csrf_cookie": c,
+				"csrf_cookie": cookie,
 				"provider":    providerName,
 			}).Warn("Invalid provider in csrf cookie")
-			http.Error(w, "Not authorized", 401)
+			http.Error(writer, "Not authorized", 401)
 			return
 		}
 
 		// Clear CSRF cookie
-		http.SetCookie(w, ClearCSRFCookie(r, c))
+		http.SetCookie(writer, ClearCSRFCookie(req, cookie))
 
 		// Exchange code for token
-		token, err := p.ExchangeCode(redirectUri(r), r.URL.Query().Get("code"))
+		token, err := configuredProvider.ExchangeCode(redirectUri(req), req.URL.Query().Get("code"))
 		if err != nil {
 			logger.WithField("error", err).Error("Code exchange failed with provider")
-			http.Error(w, "Service unavailable", 503)
+			http.Error(writer, "Service unavailable", 503)
 			return
 		}
 
 		// Get user
-		user, err := p.GetUser(token)
+		user, err := configuredProvider.GetUser(token)
 		if err != nil {
 			logger.WithField("error", err).Error("Error getting user")
-			http.Error(w, "Service unavailable", 503)
+			http.Error(writer, "Service unavailable", 503)
 			return
 		}
 
+		ensureUser(user)
+
 		// Generate cookie
-		http.SetCookie(w, MakeCookie(r, user.Email))
+		cookie, _ = MakeCookie(req, user)
+		http.SetCookie(writer, cookie)
 		logger.WithFields(logrus.Fields{
 			"provider": providerName,
 			"redirect": redirect,
-			"user":     user.Email,
+			"user":     user.UUID,
 		}).Info("Successfully generated auth cookie, redirecting user.")
 
 		// Redirect
-		http.Redirect(w, r, redirect, http.StatusTemporaryRedirect)
+		http.Redirect(writer, req, redirect, http.StatusTemporaryRedirect)
 	}
 }
 

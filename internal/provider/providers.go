@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"github.com/google/uuid"
+
 	// "net/url"
 
 	"golang.org/x/oauth2"
@@ -19,7 +21,7 @@ type Provider interface {
 	Name() string
 	GetLoginURL(redirectURI, state string) string
 	ExchangeCode(redirectURI, code string) (string, error)
-	GetUser(token string) (User, error)
+	GetUser(token string) (*User, error)
 	Setup() error
 }
 
@@ -29,7 +31,18 @@ type token struct {
 
 // User is the authenticated user
 type User struct {
-	Email string `json:"email"`
+	UUID        uuid.UUID
+	Email       string `json:"email"`
+	Name        string `json:"name"`
+	RealmAccess struct {
+		Roles []string `json:"roles"`
+	} `json:"realm_access"`
+}
+
+func newUser() *User {
+	return &User{
+		UUID: uuid.New(),
+	}
 }
 
 // OAuthProvider is a provider using the oauth2 library
