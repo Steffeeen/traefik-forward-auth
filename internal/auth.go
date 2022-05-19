@@ -129,6 +129,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 
 	// Do we have any validation to perform?
 	if len(whitelist) == 0 && len(domains) == 0 && len(allowedRoles) == 0 {
+		log.Info("Check determined that we don't have validation to perform")
 		return true
 	}
 
@@ -136,11 +137,6 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 	if len(whitelist) > 0 {
 		if ValidateWhitelist(user.Email, whitelist) {
 			return true
-		}
-
-		// If we're not matching *either*, stop here
-		if !config.MatchWhitelistOrDomain {
-			return false
 		}
 	}
 
