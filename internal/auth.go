@@ -70,7 +70,12 @@ func ValidateCookie(r *http.Request, c *http.Cookie) (*provider.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	user := users[userUUID].User
+
+	userEntry := users[userUUID]
+	if userEntry == nil {
+		return nil, errors.New("user is not known")
+	}
+	user := userEntry.User
 
 	expectedSignature, _ := cookieSignature(r, user, parts[1])
 	expected, err := base64.URLEncoding.DecodeString(expectedSignature)
