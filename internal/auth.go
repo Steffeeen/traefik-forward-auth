@@ -114,6 +114,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 	log.Info("logging works as expected")
 
 	if rule, ok := config.Rules[ruleName]; ok {
+		log.Info("we found a rule with name " + ruleName)
 		// Override with rule config if found
 		if len(rule.Whitelist) > 0 || len(rule.Domains) > 0 {
 			whitelist = rule.Whitelist
@@ -122,6 +123,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 
 		if len(rule.AllowedRoles) > 0 {
 			allowedRoles = rule.AllowedRoles
+			log.Info("adjusted allowedRoles")
 		}
 	}
 
