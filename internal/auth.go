@@ -111,10 +111,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 	domains := config.Domains
 	allowedRoles := config.AllowedRoles
 
-	log.Info("logging works as expected")
-
 	if rule, ok := config.Rules[ruleName]; ok {
-		log.Info("we found a rule with name " + ruleName)
 		// Override with rule config if found
 		if len(rule.Whitelist) > 0 || len(rule.Domains) > 0 {
 			whitelist = rule.Whitelist
@@ -123,13 +120,11 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 
 		if len(rule.AllowedRoles) > 0 {
 			allowedRoles = rule.AllowedRoles
-			log.Info("adjusted allowedRoles")
 		}
 	}
 
 	// Do we have any validation to perform?
 	if len(whitelist) == 0 && len(domains) == 0 && len(allowedRoles) == 0 {
-		log.Info("Check determined that we don't have validation to perform")
 		return true
 	}
 
@@ -145,11 +140,8 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 		return true
 	}
 
-	log.Infof("allowed roles has %d items, config has %d items", len(allowedRoles), len(config.Rules[ruleName].AllowedRoles))
-
 	// allowed rules validation
 	if len(allowedRoles) > 0 && ValidateRoles(user, allowedRoles) {
-		log.Info("allowed rules > 0")
 		return true
 	}
 
@@ -159,7 +151,6 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 func ValidateRoles(user *provider.User, allowedRoles CommaSeparatedList) bool {
 	for _, allowedRole := range allowedRoles {
 		for _, userRole := range user.RealmAccess.Roles {
-			log.Infof("Checking (allowed vs user) %s vs %s", allowedRole, userRole)
 			if allowedRole == userRole {
 				return true
 			}
