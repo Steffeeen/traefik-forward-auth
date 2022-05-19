@@ -142,6 +142,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 
 	// allowed rules validation
 	if len(allowedRoles) > 0 && ValidateRoles(user, allowedRoles) {
+		log.Info("allowed rules > 0")
 		return true
 	}
 
