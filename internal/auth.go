@@ -73,7 +73,7 @@ func ValidateCookie(r *http.Request, c *http.Cookie) (*provider.User, error) {
 
 	userEntry := users[userUUID]
 	if userEntry == nil {
-		return nil, errors.New("user is not known")
+		return nil, errors.New("user is unknown")
 	}
 	user := userEntry.User
 

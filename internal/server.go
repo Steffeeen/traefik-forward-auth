@@ -97,6 +97,9 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 			if err.Error() == "Cookie has expired" {
 				logger.Info("Cookie has expired")
 				s.authRedirect(logger, w, r, p)
+			} else if err.Error() == "user is unknown" {
+				logger.Info("user is unknown, redirecting to log in")
+				s.authRedirect(logger, w, r, p)
 			} else {
 				logger.WithField("error", err).Warn("Invalid cookie")
 				http.Error(w, "Not authorized", 401)
