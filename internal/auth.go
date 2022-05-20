@@ -150,7 +150,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 
 func ValidateRoles(user *provider.User, allowedRoles CommaSeparatedList) bool {
 	for _, allowedRole := range allowedRoles {
-		for _, userRole := range user.RealmAccess.Roles {
+		for _, userRole := range user.Roles {
 			if allowedRole == userRole {
 				return true
 			}

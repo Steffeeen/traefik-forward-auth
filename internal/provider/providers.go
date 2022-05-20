@@ -31,12 +31,10 @@ type token struct {
 
 // User is the authenticated user
 type User struct {
-	UUID        uuid.UUID
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	RealmAccess struct {
-		Roles []string `json:"roles"`
-	} `json:"realm_access"`
+	UUID  uuid.UUID
+	Email string   `json:"email"`
+	Name  string   `json:"name"`
+	Roles []string `json:"roles"`
 }
 
 func newUser() *User {
