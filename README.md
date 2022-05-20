@@ -4,6 +4,11 @@
 
 A minimal forward authentication service that provides OAuth/SSO login and authentication for the [traefik](https://github.com/containous/traefik) reverse proxy/load balancer.
 
+## Difference compared to upstream
+Added the ability to restrict access by which roles the user has. The OIDC provider just has to put the roles the user has as a string array into the claims as `roles`.
+You can now add an allowed-roles option to the config to restrict all endpoints.
+You can also set the `allowedRoles` property of rules. 
+
 ## Why?
 
 - Seamlessly overlays any http service with a single endpoint (see: `url-path` in [Configuration](#configuration))
@@ -164,6 +169,7 @@ Application Options:
   --url-path=                                           Callback URL Path (default: /_oauth) [$URL_PATH]
   --secret=                                             Secret used for signing (required) [$SECRET]
   --whitelist=                                          Only allow given email addresses, can be set multiple times [$WHITELIST]
+  --allowed-roles=                                      Only allow users with any of the given roles [$ALLOWED_ROLES]
   --port=                                               Port to listen on (default: 4181) [$PORT]
   --rule.<name>.<param>=                                Rule definitions, param can be: "action", "rule" or "provider"
 
@@ -338,6 +344,7 @@ All options can be supplied in any of the following ways, in the following prece
            - ``PathPrefix(`/products/`, `/articles/{category}/{id:[0-9]+}`)``
            - ``Query(`foo=bar`, `bar=baz`)``
        - `whitelist` - optional, same usage as whitelist`](#whitelist)
+       - `allowedRoles` - optional, same usage as allowedRoles in config
 
    For example:
    ```
@@ -454,6 +461,11 @@ rule.1.rule = Host(`dash.example.com`)
 # Allow requests to `app.example.com/public`
 rule.two.action = allow
 rule.two.rule = Host(`app.example.com`) && Path(`/public`)
+
+# Allow requests to `app.example.com` only if the user has the `app` role
+rule.three.action = auth
+rule.three.rule = Host(`app.example.com`)
+rule.three.allowedRoles = app
 ```
 
 ### Operation Modes
