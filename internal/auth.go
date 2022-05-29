@@ -149,6 +149,7 @@ func ValidateUser(user *provider.User, ruleName string) bool {
 }
 
 func ValidateRoles(user *provider.User, allowedRoles CommaSeparatedList) bool {
+	log.Debugf("User %s has the following rules: %v", user.Name, user.Roles)
 	for _, allowedRole := range allowedRoles {
 		for _, userRole := range user.Roles {
 			if allowedRole == userRole {
